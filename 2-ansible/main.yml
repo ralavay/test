@@ -1,0 +1,54 @@
+---
+- hosts: all
+  remote_user: ubuntu
+  tasks:
+
+    - name: Check if Apache2 was installed
+      shell: apache2 -version 
+      register: check_apache2
+      ignore_errors: yes
+
+    - block:
+      - name: Install Apache2
+        apt: name=apache2 state=latest update_cache=yes cache_valid_time=3600
+
+      ## Rename default vhost to my_website
+      - name: Copy /etc/apache2/sites-available/000-default.conf to /etc/apache2/sites-available/my_website.conf
+        copy: remote_src=yes
+              src=/etc/apache2/sites-available/000-default.conf
+              dest=/etc/apache2/sites-available/my_website.conf
+        ignore_errors: yes
+
+      - name: Delete the default /etc/apache2/sites-available/000-default.conf
+        file: path=/etc/apache2/sites-available/000-default.conf state=absent
+
+      - name: Remove default symlink /etc/apache2/sites-enabled/000-default.conf
+        file: path=/etc/apache2/sites-enabled/000-default.conf state=absent
+
+      - name: Create symlink for /etc/apache2/sites-enabled/my_website.conf
+        file: src=/etc/apache2/sites-available/my_website.conf
+              dest=/etc/apache2/sites-enabled/my_website.conf
+              state=link
+        notify: Restart apache2
+
+      - name: Ensure Apache is running
+        service: name=apache2 state=started enabled=yes
+
+      when: check_apache2|failed
+      become: yes
+
+    - block:
+
+      - name: Create /opt/scripts
+        file: path=/opt/scripts state=directory mode=0755
+
+      - name: Puts an empty file in /opt/scripts/holding.sh with mode 755
+        file: path=/opt/scripts/holding.sh state=touch mode=0755
+      
+      become: yes
+
+  handlers:
+
+    - name: Restart apache2
+      service: name=apache2 state=restarted
+      become: yes
